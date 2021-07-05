@@ -1,0 +1,31 @@
+ {
+    "query": {
+         "bool": {
+             "must": [
+	        {"range": {"date": {"gte": "2020-12-15", "lte": "2021-05-31"}}}, 
+		{"term": {"symbol": "FDEV"}}
+	     ]
+	 }
+    }, 
+    "aggs": {
+        "MACD": {
+	    "date_histogram": {"field": "date", "fixed_interval": "1d", "format": "yyyy-MM-dd"}, 
+	    "aggs": {
+		    "Daily": {"scripted_metric": {"init_script": "state.totals=[]", "map_script": "state.totals.add((doc.high.value+doc.low.value+doc.close.value)/3)", "combine_script": "def total=0.0; for (t in state.totals) {total += t} return total", "reduce_script": "return states[0]"}}, 
+		    "STP": {"bucket_selector": {"buckets_path": {"count": "_count"}, "script": "params.count > 0"}}, 
+		    "DateStr": {"min": {"field": "date"}}, 
+		    "EMA12": {"moving_fn": {"script": "MovingFunctions.ewma(values, 2/(12+1))", "window": 12, "buckets_path": "Daily.value"}}, 
+		    "EMA26": {"moving_fn": {"script": "MovingFunctions.ewma(values, 2/(26+1))", "window": 26, "buckets_path": "Daily.value"}}, 
+		    "macd": {"bucket_script": {"buckets_path": {"EMA12": "EMA12", "EMA26": "EMA26"}, "script": "params.EMA12 - params.EMA26"}}, 
+		    "SMA": {"moving_fn": {"script": "MovingFunctions.unweightedAvg(values)", "window": 20, "buckets_path": "macd"}}, 
+		    "SD": {"moving_fn": {"script": "MovingFunctions.stdDev(values, MovingFunctions.unweightedAvg(values))", "window": 20, "buckets_path": "macd"}}, 
+		    "BBU": {"bucket_script": {"buckets_path": {"SMA": "SMA", "SD": "SD"}, "script": "params.SMA + 2*params.SD"}}, 
+		    "BBL": {"bucket_script": {"buckets_path": {"SMA": "SMA", "SD": "SD"}, "script": "params.SMA - 2*params.SD"}}, 
+		    "MACD_Diff": {"derivative": {"buckets_path": "macd"}}, 
+		    "MACDType": {"bucket_script": {"buckets_path": {"BBL": "BBL", "BBU": "BBU", "MACD": "macd", "MACD_Diff": "MACD_Diff"}, "script": "(params.MACD > params.BBU) ? (params.MACD_Diff > 0 ? 3:4) : (params.MACD < params.BBL) ? (params.MACD_Diff > 0 ? 2:1):0"}},
+		    "SMACD": {"bucket_selector": {"buckets_path" : {"DateStr": "DateStr"}, "script": "params.DateStr >= 1612180800000L"}}
+	    }
+	}
+    }, 
+    "from": 0, "size": 0
+ }
